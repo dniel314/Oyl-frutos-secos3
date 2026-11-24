@@ -12,6 +12,7 @@
     <string name="error_invalid_credentials">Usuario o contraseña incorrectos</string>
     <string name="error_alias_taken">Ese alias ya está registrado</string>
     <string name="error_email_taken">Ese correo ya está registrado</string>
+    <string name="error_no_connection">No se pudo conectar con el servidor. Revisa tu red e inténtalo nuevamente.</string>
     <string name="cd_show_password">Mostrar contraseña</string>
     <string name="cd_hide_password">Ocultar contraseña</string>
 

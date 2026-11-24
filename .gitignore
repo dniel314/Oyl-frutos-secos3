@@ -23,7 +23,10 @@ signing.properties
 
 # Backend
 backend/target/
+**/target/
 backend/build/
-backend/.gradle/
+**/build/
+**/.gradle/
+**/.kotlin/
 *.log
 backend/uploads/

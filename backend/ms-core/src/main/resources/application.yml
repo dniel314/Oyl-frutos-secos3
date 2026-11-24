@@ -1,26 +1,55 @@
 spring:
   application:
     name: oyl-backend
+  # PostgreSQL: instancia EXCLUSIVA de ms-core (contenedor postgres-core).
+  # Las credenciales y la URL llegan por variables de entorno; nunca al repositorio.
   datasource:
-    url: jdbc:h2:mem:oyl;DB_CLOSE_DELAY=-1
-    username: sa
-    password: ""
+    url: ${DB_URL:jdbc:postgresql://localhost:5436/oyl_core}
+    username: ${DB_USERNAME:oyl_core}
+    password: ${DB_PASSWORD:oyl_core_pw}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # El esquema lo administra Flyway; Hibernate solo valida que las entidades coincidan.
+      ddl-auto: validate
     open-in-view: false
-  h2:
-    console:
-      enabled: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
   servlet:
     multipart:
       max-file-size: 5MB
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 server:
   port: ${SERVER_PORT:8084}
+  shutdown: graceful
 oyl:
   jwt:
-    # Solo para desarrollo. En otro entorno definir OYL_JWT_SECRET (mínimo 32 caracteres).
+    # Solo para desarrollo. En Docker se define OYL_JWT_SECRET (mínimo 32 caracteres).
     secret: ${OYL_JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
     ttl-hours: 12
   uploads-dir: ${OYL_UPLOADS_DIR:uploads}
   demo-admin-password: ${OYL_ADMIN_PASSWORD:OylAdmin2026!}
+  # Datos de demostración: true en desarrollo; false para arrancar una base vacía.
+  demo-seed: ${OYL_DEMO_SEED:true}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never

@@ -35,22 +35,32 @@ Cada componente es un proyecto Maven completamente aislado con su propio ciclo d
 
 ---
 
-## 3. Base de Datos Centralizada con Aislamiento Lógico
+## 3. Cuatro instancias PostgreSQL independientes
 
-Acatando los principios de diseño de microservicios, **ningún microservicio consulta directamente la base de datos de otro**:
+**Ningún microservicio consulta la base de datos de otro**, y cada uno tiene su
+**propio servidor PostgreSQL**, no solo su propio esquema:
 
 ```text
-PostgreSQL (Puerto 5432)
-├── oyl_usuarios   <-- Exclusiva de ms-usuarios (tablas: usuarios)
-├── oyl_productos  <-- Exclusiva de ms-productos (tablas: categorias, productos)
-└── oyl_ventas     <-- Exclusiva de ms-ventas (tablas: ventas, detalle_ventas)
+postgres-usuarios  :5433  ->  oyl_usuarios   (usuarios)
+postgres-productos :5434  ->  oyl_productos  (categorias, productos)
+postgres-ventas    :5435  ->  oyl_ventas     (ventas, detalle_ventas)
+postgres-core      :5436  ->  oyl_core       (users, product, orders, ...)
 ```
 
+Cada contenedor tiene su usuario, contraseña y volumen (`pg_*_data`), y un
+`healthcheck` con `pg_isready` que condiciona el arranque de su microservicio.
+
 ### Inicialización de PostgreSQL
-Ejecuta el script SQL incluido en esta carpeta:
+No hay que ejecutar ningún script a mano: el contenedor crea la base (`POSTGRES_DB`)
+y **Flyway** aplica el esquema al arrancar el servicio.
+
 ```bash
-psql -U postgres -f init-databases.sql
+docker compose up -d postgres-usuarios postgres-productos postgres-ventas postgres-core
 ```
+
+> El antiguo `init-databases.sql` (una instancia con las bases lógicas) quedó obsoleto
+> con esta arquitectura y fue eliminado. Si necesitas crear las bases en un PostgreSQL
+> externo, crea una base y un usuario por servicio.
 
 ### Migraciones con Flyway
 Cada microservicio incluye sus scripts de migración en `src/main/resources/db/migration/`:
@@ -68,7 +78,7 @@ Cada servicio dispone de valores predeterminados seguros para desarrollo local, 
 
 | Variable | Descripción | Valor Predeterminado |
 | :--- | :--- | :--- |
-| `DB_URL` | URL JDBC de conexión al microservicio | `jdbc:postgresql://localhost:5432/<nombre_db>` |
+| `DB_URL` | URL JDBC de conexión al microservicio | `jdbc:postgresql://postgres-<servicio>:5432/oyl_<servicio>` |
 | `DB_USERNAME` | Usuario de PostgreSQL | `postgres` |
 | `DB_PASSWORD` | Contraseña de PostgreSQL | `postgres` |
 | `EUREKA_URI` | URL para registrarse en Eureka Server | `http://localhost:8761/eureka/` |
@@ -82,7 +92,10 @@ Para validar que todo el ecosistema compila y pasa sus pruebas unitarias:
 ```bash
 mvn -f pom.xml test
 ```
-*Las pruebas unitarias utilizan mocks de Mockito y bases de datos H2 en memoria, por lo que no requieren tener PostgreSQL encendido para compilar.*
+*Las pruebas unitarias de servicio usan mocks de Mockito. Las pruebas de contexto arrancan un
+**PostgreSQL 16 real embebido** (Zonky `embedded-postgres`) con una base nueva por clase:
+no requieren tener PostgreSQL encendido ni Docker, y validan el mismo motor que producción
+(Flyway aplica el esquema y Hibernate lo valida).*
 
 ### Orden de Inicio de los Servicios en Desarrollo
 

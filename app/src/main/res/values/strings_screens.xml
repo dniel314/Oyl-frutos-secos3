@@ -163,4 +163,15 @@
     <string name="perm_camera">Cámara</string>
     <string name="perm_location">Ubicación</string>
     <string name="perm_notifications">Notificaciones</string>
+
+    <!-- Estado del backend (perfil) -->
+    <string name="backend_section">Servidor y base de datos</string>
+    <string name="backend_mode_remote">Conectado al backend PostgreSQL</string>
+    <string name="backend_mode_local">Modo local (sin backend)</string>
+    <string name="backend_check">Comprobar servicios</string>
+    <string name="backend_checking">Comprobando…</string>
+    <string name="backend_online">En línea</string>
+    <string name="backend_offline">Sin conexión</string>
+    <string name="backend_hint">La app funciona con el backend Docker (4 bases PostgreSQL) y guarda una copia local para seguir operando sin red.</string>
+    <string name="backend_latency">%1$d ms</string>
 </resources>

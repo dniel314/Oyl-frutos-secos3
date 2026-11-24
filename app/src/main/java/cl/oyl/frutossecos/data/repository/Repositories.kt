@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.Flow
  * las Remote (Retrofit + JWT contra el backend Spring Boot) se agregarán sin cambiar la UI.
  */
 
-enum class AuthError { INVALID_CREDENTIALS, ALIAS_TAKEN, EMAIL_TAKEN }
+enum class AuthError { INVALID_CREDENTIALS, ALIAS_TAKEN, EMAIL_TAKEN, CONNECTION }
 class AuthException(val error: AuthError) : Exception(error.name)
 
 /** Errores de negocio de pedidos e inventario. */

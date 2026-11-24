@@ -52,6 +52,9 @@ import cl.oyl.frutossecos.core.ui.components.PrimaryButton
 import cl.oyl.frutossecos.core.ui.components.SecondaryButton
 import cl.oyl.frutossecos.core.ui.components.SectionHeader
 import cl.oyl.frutossecos.core.ui.components.UiMessage
+import cl.oyl.frutossecos.BuildConfig
+import cl.oyl.frutossecos.data.remote.BackendDiagnostics
+import cl.oyl.frutossecos.data.remote.ServiceStatus
 import cl.oyl.frutossecos.data.repository.AuthRepository
 import cl.oyl.frutossecos.data.repository.ProfileRepository
 import cl.oyl.frutossecos.domain.logic.FieldError
@@ -74,7 +77,23 @@ import kotlinx.coroutines.launch
 class ProfileViewModel @Inject constructor(
     auth: AuthRepository,
     private val profile: ProfileRepository,
+    private val diagnostics: BackendDiagnostics,
 ) : ViewModel() {
+    /** Estado de los cuatro microservicios; null = aún sin comprobar. */
+    val services = MutableStateFlow<List<ServiceStatus>?>(null)
+    val checking = MutableStateFlow(false)
+    val backendEnabled: Boolean get() = BuildConfig.USE_REMOTE_REPOSITORIES
+
+    /** Consulta /actuator/health de cada servicio (ms-usuarios, productos, ventas y core). */
+    fun checkServices() {
+        if (checking.value) return
+        checking.value = true
+        viewModelScope.launch {
+            services.value = diagnostics.checkAll()
+            checking.value = false
+        }
+    }
+
     val user: StateFlow<User?> = auth.session.flatMapLatest { s -> if (s == null) flowOf(null) else profile.observeUser(s.userId) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val errors = MutableStateFlow<Map<String, FieldError>>(emptyMap())
@@ -101,6 +120,8 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = hiltViewModel()) 
     val user by vm.user.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
     val msg by vm.message.collectAsStateWithLifecycle()
+    val services by vm.services.collectAsStateWithLifecycle()
+    val checking by vm.checking.collectAsStateWithLifecycle()
     MessageEffect(msg) { vm.message.value = null }
     val u = user ?: run { LoadingState(); return }
     val context = LocalContext.current
@@ -133,6 +154,33 @@ fun ProfileScreen(onLogout: () -> Unit, vm: ProfileViewModel = hiltViewModel()) 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.profile_notifications_switch), Modifier.weight(1f))
             Switch(checked = u.notificationsEnabled, onCheckedChange = { vm.setNotifications(u, it) })
+        }
+        SectionHeader(stringResource(R.string.backend_section))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(OylDimens.CardPadding), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    stringResource(if (vm.backendEnabled) R.string.backend_mode_remote else R.string.backend_mode_local),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(stringResource(R.string.backend_hint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                services.orEmpty().forEach { st ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(st.endpoint.name, Modifier.weight(1f))
+                        Text(
+                            if (st.online) "${stringResource(R.string.backend_online)} · ${stringResource(R.string.backend_latency, st.latencyMs)}"
+                            else stringResource(R.string.backend_offline),
+                            color = if (st.online) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    if (!st.online) {
+                        Text(st.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                TextButton(onClick = { vm.checkServices() }, enabled = !checking) {
+                    Text(stringResource(if (checking) R.string.backend_checking else R.string.backend_check))
+                }
+            }
         }
         SectionHeader(stringResource(R.string.profile_permissions))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {

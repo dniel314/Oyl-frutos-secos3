@@ -1,5 +1,24 @@
 import java.util.Properties
 
+// --- Backend OYL: host y puertos configurables sin tocar código ---
+// Prioridad: local.properties (oylDevHost, oylGatewayPort, ...) > gradle.properties > valor por defecto.
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun prop(key: String, fallback: String): String =
+    localProps.getProperty(key) ?: (findProperty(key) as String?) ?: fallback
+
+// 10.0.2.2 es el "localhost" del computador visto desde el emulador de Android Studio.
+// Para un teléfono físico: oylDevHost=192.168.1.X (misma red WiFi que el computador con Docker).
+val devHost = prop("oylDevHost", "10.0.2.2")
+val gatewayPort = prop("oylGatewayPort", "8080")
+val usuariosPort = prop("oylUsuariosPort", "8081")
+val productosPort = prop("oylProductosPort", "8082")
+val ventasPort = prop("oylVentasPort", "8083")
+val corePort = prop("oylCorePort", "8084")
+// Producción: base HTTPS propia, sin tocar código.
+val prodBaseUrl = prop("oylProdBaseUrl", "https://api.oylfrutossecos.cl/").trimEnd('/') + "/"
+
 plugins {
     alias(libs.plugins.android.application)
     // AGP 9 trae soporte de Kotlin integrado: no se aplica org.jetbrains.kotlin.android.
@@ -24,10 +43,20 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // false = implementaciones Local (Room/SQLite). En esta versión la app trabaja solo en local.
-        buildConfigField("boolean", "USE_REMOTE_REPOSITORIES", "false")
-        // El emulador accede al localhost del PC mediante 10.0.2.2.
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
+        // true = backend real vía Retrofit con caché Room (offline-first).
+        // false = modo 100 % local (comportamiento original de la app).
+        val useRemote = prop("oylUseRemote", "true").toBoolean()
+        buildConfigField("boolean", "USE_REMOTE_REPOSITORIES", useRemote.toString())
+
+        // Host y puertos del backend, en un solo lugar.
+        buildConfigField("String", "API_HOST", "\"$devHost\"")
+        buildConfigField("int", "API_GATEWAY_PORT", gatewayPort)
+        buildConfigField("int", "API_USUARIOS_PORT", usuariosPort)
+        buildConfigField("int", "API_PRODUCTOS_PORT", productosPort)
+        buildConfigField("int", "API_VENTAS_PORT", ventasPort)
+        buildConfigField("int", "API_CORE_PORT", corePort)
+        // Endpoint principal (ms-core a través del gateway).
+        buildConfigField("String", "API_BASE_URL", "\"http://$devHost:$gatewayPort/api/v1/\"")
     }
 
     // Firma de release: keystore.properties (fuera de git) o variables de entorno OYL_*.
@@ -50,7 +79,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Desarrollo: emulador (10.0.2.2) o IP LAN configurada en local.properties.
+            versionNameSuffix = "-dev"
+        }
         release {
+            // Producción: URL HTTPS propia (oylProdBaseUrl) y sin tráfico en claro.
+            buildConfigField("String", "API_BASE_URL", "\"${prodBaseUrl}api/v1/\"")
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.findByName("release")

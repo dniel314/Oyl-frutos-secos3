@@ -1,0 +1,12 @@
+# Contexto ./backend: solo se necesita el código fuente y los poms.
+# Nada compilado ni de entorno local entra en la imagen.
+**/target/
+**/build/
+**/.gradle/
+**/.kotlin/
+.git/
+.gitignore
+.idea/
+*.iml
+**/*.log
+**/.env

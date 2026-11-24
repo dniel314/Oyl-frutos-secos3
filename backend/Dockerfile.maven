@@ -1,0 +1,39 @@
+# =====================================================================
+# Dockerfile compartido para los módulos Maven del backend.
+# El contexto de build debe ser ./backend (raíz del reactor) para que
+# Maven resuelva el pom padre (cl.oyl:backend-parent).
+#
+#   docker build -f backend/Dockerfile.maven \
+#     --build-arg MODULE=ms-usuarios -t oyl/ms-usuarios:local backend
+#
+# Compila desde el código fuente (no requiere `mvn package` previo).
+# =====================================================================
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /src
+
+# 1) Copiar solo los poms para aprovechar la caché de dependencias.
+COPY pom.xml ./
+COPY eureka-server/pom.xml eureka-server/
+COPY api-gateway/pom.xml api-gateway/
+COPY ms-usuarios/pom.xml ms-usuarios/
+COPY ms-productos/pom.xml ms-productos/
+COPY ms-ventas/pom.xml ms-ventas/
+RUN mvn -B -q -e -DskipTests dependency:go-offline || true
+
+# 2) Código y compilación del módulo solicitado.
+COPY . .
+ARG MODULE
+RUN mvn -B -DskipTests -pl "${MODULE}" -am package
+
+# 3) Imagen final mínima.
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+ARG MODULE
+COPY --from=build /src/${MODULE}/target/*.jar /app/app.jar
+
+# Usuario sin privilegios.
+RUN addgroup -S oyl && adduser -S oyl -G oyl && chown -R oyl:oyl /app
+USER oyl
+
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

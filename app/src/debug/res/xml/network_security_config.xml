@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SOLO VARIANTE DEBUG (desarrollo).
+
+  Permite HTTP en claro hacia cualquier host porque la IP del computador que
+  ejecuta Docker cambia (192.168.x.x, 10.x.x.x, hotspot, etc.) y no se puede
+  declarar en el build de release.
+
+  - Esta configuración NO entra en el APK de release: en `app/src/main/` solo
+    se permiten 10.0.2.2 y localhost, y la app de producción usa HTTPS.
+  - Telegram, Firebase y el resto del tráfico siguen funcionando igual.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -14,11 +14,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.annotation.DirtiesContext
 
 /** Dos (o más) pedidos simultáneos por la última unidad: solo uno gana, nunca hay sobreventa. */
-@SpringBootTest
+@PostgresTest
 @DirtiesContext
 class ConcurrencyTest(
     @Autowired private val orders: OrderService,

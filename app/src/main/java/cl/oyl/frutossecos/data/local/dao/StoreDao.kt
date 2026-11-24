@@ -16,4 +16,7 @@ interface StoreDao {
 
     @Query("SELECT COUNT(*) FROM stores")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM stores ORDER BY type, name")
+    suspend fun all(): List<StoreEntity>
 }

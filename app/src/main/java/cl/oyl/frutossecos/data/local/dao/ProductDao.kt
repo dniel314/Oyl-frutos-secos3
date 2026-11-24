@@ -54,4 +54,7 @@ interface ProductDao {
 
     @Query("SELECT * FROM products ORDER BY name")
     fun observeAll(): Flow<List<ProductEntity>>
+
+    @Query("SELECT * FROM products")
+    suspend fun all(): List<ProductEntity>
 }

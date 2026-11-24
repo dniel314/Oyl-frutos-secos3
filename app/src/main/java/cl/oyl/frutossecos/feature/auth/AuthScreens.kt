@@ -68,6 +68,7 @@ fun authErrorText(e: AuthError?): String? = when (e) {
     AuthError.INVALID_CREDENTIALS -> stringResource(R.string.error_invalid_credentials)
     AuthError.ALIAS_TAKEN -> stringResource(R.string.error_alias_taken)
     AuthError.EMAIL_TAKEN -> stringResource(R.string.error_email_taken)
+    AuthError.CONNECTION -> stringResource(R.string.error_no_connection)
 }
 
 @Composable

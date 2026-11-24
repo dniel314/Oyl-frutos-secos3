@@ -1,154 +1,312 @@
+# =====================================================================
+# OYL Frutos Secos — infraestructura completa
+# ---------------------------------------------------------------------
+#   docker compose up --build        (levantar)
+#   docker compose down              (detener, CONSERVA los volúmenes)
+#
+# Cuatro instancias PostgreSQL independientes, una por microservicio.
+# Cada base tiene su contenedor, su usuario, su contraseña y su volumen.
+# Los servicios se descubren por nombre DNS dentro de la red oyl-network
+# y cada microservicio espera a que SU base esté healthy.
+# =====================================================================
+
+name: oyl
+
 services:
-  postgres:
+  # ------------------------------------------------------------------
+  # Bases de datos: 4 instancias independientes
+  # ------------------------------------------------------------------
+  postgres-usuarios:
     image: postgres:16-alpine
-    container_name: oyl-postgres
-    restart: always
+    container_name: oyl-postgres-usuarios
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_USUARIOS_NAME:-oyl_usuarios}
+      POSTGRES_USER: ${DB_USUARIOS_USER:-oyl_usuarios}
+      POSTGRES_PASSWORD: ${DB_USUARIOS_PASSWORD:-oyl_usuarios_pw}
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "${PORT_DB_USUARIOS:-5433}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - pg_usuarios_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 10s
     networks:
       - oyl-network
 
+  postgres-productos:
+    image: postgres:16-alpine
+    container_name: oyl-postgres-productos
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_PRODUCTOS_NAME:-oyl_productos}
+      POSTGRES_USER: ${DB_PRODUCTOS_USER:-oyl_productos}
+      POSTGRES_PASSWORD: ${DB_PRODUCTOS_PASSWORD:-oyl_productos_pw}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PORT_DB_PRODUCTOS:-5434}:5432"
+    volumes:
+      - pg_productos_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - oyl-network
+
+  postgres-ventas:
+    image: postgres:16-alpine
+    container_name: oyl-postgres-ventas
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_VENTAS_NAME:-oyl_ventas}
+      POSTGRES_USER: ${DB_VENTAS_USER:-oyl_ventas}
+      POSTGRES_PASSWORD: ${DB_VENTAS_PASSWORD:-oyl_ventas_pw}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PORT_DB_VENTAS:-5435}:5432"
+    volumes:
+      - pg_ventas_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - oyl-network
+
+  postgres-core:
+    image: postgres:16-alpine
+    container_name: oyl-postgres-core
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_CORE_NAME:-oyl_core}
+      POSTGRES_USER: ${DB_CORE_USER:-oyl_core}
+      POSTGRES_PASSWORD: ${DB_CORE_PASSWORD:-oyl_core_pw}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PORT_DB_CORE:-5436}:5432"
+    volumes:
+      - pg_core_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - oyl-network
+
+  # ------------------------------------------------------------------
+  # Descubrimiento
+  # ------------------------------------------------------------------
   eureka-server:
     build:
-      context: ./backend/eureka-server
+      context: ./backend
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: eureka-server
     container_name: oyl-eureka-server
-    restart: always
+    restart: unless-stopped
     ports:
-      - "8761:8761"
+      - "${PORT_EUREKA:-8761}:8761"
     environment:
-      - SERVER_PORT=8761
-      - EUREKA_INSTANCE_HOSTNAME=eureka-server
+      SERVER_PORT: 8761
+      EUREKA_INSTANCE_HOSTNAME: eureka-server
+      # Se registra con el nombre DNS del contenedor (no con la IP efímera).
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 12
+      start_period: 30s
     networks:
       - oyl-network
 
+  # ------------------------------------------------------------------
+  # Microservicios Spring Boot (Maven)
+  # ------------------------------------------------------------------
   ms-usuarios:
     build:
-      context: ./backend/ms-usuarios
+      context: ./backend
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: ms-usuarios
+    image: oyl/ms-usuarios:local
     container_name: oyl-ms-usuarios
-    restart: always
+    restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "${PORT_MS_USUARIOS:-8081}:8081"
     environment:
-      - SERVER_PORT=8081
-      - EUREKA_URI=http://eureka-server:8761/eureka/
-      - DB_URL=jdbc:postgresql://postgres:5432/oyl_usuarios
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=postgres
+      SERVER_PORT: 8081
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      EUREKA_URI: ${EUREKA_URI:-http://eureka-server:8761/eureka/}
+      DB_URL: ${DB_USUARIOS_URL:-jdbc:postgresql://postgres-usuarios:5432/oyl_usuarios}
+      DB_USERNAME: ${DB_USUARIOS_USER:-oyl_usuarios}
+      DB_PASSWORD: ${DB_USUARIOS_PASSWORD:-oyl_usuarios_pw}
     depends_on:
-      postgres:
+      postgres-usuarios:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 50s
     networks:
       - oyl-network
 
   ms-productos:
     build:
-      context: ./backend/ms-productos
+      context: ./backend
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: ms-productos
+    image: oyl/ms-productos:local
     container_name: oyl-ms-productos
-    restart: always
+    restart: unless-stopped
     ports:
-      - "8082:8082"
+      - "${PORT_MS_PRODUCTOS:-8082}:8082"
     environment:
-      - SERVER_PORT=8082
-      - EUREKA_URI=http://eureka-server:8761/eureka/
-      - DB_URL=jdbc:postgresql://postgres:5432/oyl_productos
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=postgres
+      SERVER_PORT: 8082
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      EUREKA_URI: ${EUREKA_URI:-http://eureka-server:8761/eureka/}
+      DB_URL: ${DB_PRODUCTOS_URL:-jdbc:postgresql://postgres-productos:5432/oyl_productos}
+      DB_USERNAME: ${DB_PRODUCTOS_USER:-oyl_productos}
+      DB_PASSWORD: ${DB_PRODUCTOS_PASSWORD:-oyl_productos_pw}
     depends_on:
-      postgres:
+      postgres-productos:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 50s
     networks:
       - oyl-network
 
   ms-ventas:
     build:
-      context: ./backend/ms-ventas
+      context: ./backend
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: ms-ventas
+    image: oyl/ms-ventas:local
     container_name: oyl-ms-ventas
-    restart: always
+    restart: unless-stopped
     ports:
-      - "8083:8083"
+      - "${PORT_MS_VENTAS:-8083}:8083"
     environment:
-      - SERVER_PORT=8083
-      - EUREKA_URI=http://eureka-server:8761/eureka/
-      - DB_URL=jdbc:postgresql://postgres:5432/oyl_ventas
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=postgres
+      SERVER_PORT: 8083
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      EUREKA_URI: ${EUREKA_URI:-http://eureka-server:8761/eureka/}
+      DB_URL: ${DB_VENTAS_URL:-jdbc:postgresql://postgres-ventas:5432/oyl_ventas}
+      DB_USERNAME: ${DB_VENTAS_USER:-oyl_ventas}
+      DB_PASSWORD: ${DB_VENTAS_PASSWORD:-oyl_ventas_pw}
+      MS_PRODUCTOS_URL: ${MS_PRODUCTOS_URL:-http://ms-productos:8082}
+      MS_USUARIOS_URL: ${MS_USUARIOS_URL:-http://ms-usuarios:8081}
     depends_on:
-      postgres:
+      postgres-ventas:
         condition: service_healthy
       eureka-server:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 50s
     networks:
       - oyl-network
 
-
-  # Backend integral original de Repo 1, conservado para no perder funcionalidades.
+  # Backend integral original (Kotlin/Spring Boot, ahora sobre PostgreSQL).
   ms-core:
     build:
       context: ./backend/ms-core
+    image: oyl/ms-core:local
     container_name: oyl-ms-core
     restart: unless-stopped
     ports:
-      - "8084:8084"
+      - "${PORT_MS_CORE:-8084}:8084"
     environment:
-      - SERVER_PORT=8084
-      - OYL_JWT_SECRET=${OYL_JWT_SECRET:-change-this-secret-before-deploying-123456789}
-      - OYL_ADMIN_PASSWORD=${OYL_ADMIN_PASSWORD:-OylAdmin2026!}
-      - OYL_UPLOADS_DIR=/app/uploads
+      SERVER_PORT: 8084
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      DB_URL: ${DB_CORE_URL:-jdbc:postgresql://postgres-core:5432/oyl_core}
+      DB_USERNAME: ${DB_CORE_USER:-oyl_core}
+      DB_PASSWORD: ${DB_CORE_PASSWORD:-oyl_core_pw}
+      OYL_JWT_SECRET: ${OYL_JWT_SECRET:-cambiar-por-un-secreto-aleatorio-de-32-o-mas-caracteres}
+      OYL_ADMIN_PASSWORD: ${OYL_ADMIN_PASSWORD:-cambiar-clave-admin-demo}
+      OYL_DEMO_SEED: ${OYL_DEMO_SEED:-true}
+      OYL_UPLOADS_DIR: /app/uploads
     volumes:
       - oyl_uploads:/app/uploads
     depends_on:
-      eureka-server:
+      postgres-core:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 50s
     networks:
       - oyl-network
 
+  # ------------------------------------------------------------------
+  # Punto de entrada único
+  # ------------------------------------------------------------------
   api-gateway:
     build:
-      context: ./backend/api-gateway
+      context: ./backend
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: api-gateway
+    image: oyl/api-gateway:local
     container_name: oyl-api-gateway
-    restart: always
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PORT_GATEWAY:-8080}:8080"
     environment:
-      - SERVER_PORT=8080
-      - EUREKA_URI=http://eureka-server:8761/eureka/
+      SERVER_PORT: 8080
+      EUREKA_URI: ${EUREKA_URI:-http://eureka-server:8761/eureka/}
     depends_on:
       eureka-server:
         condition: service_healthy
       ms-usuarios:
-        condition: service_started
+        condition: service_healthy
       ms-productos:
-        condition: service_started
+        condition: service_healthy
       ms-ventas:
-        condition: service_started
+        condition: service_healthy
       ms-core:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     networks:
       - oyl-network
 
 volumes:
-  postgres_data:
+  pg_usuarios_data:
+  pg_productos_data:
+  pg_ventas_data:
+  pg_core_data:
   oyl_uploads:
 
 networks:

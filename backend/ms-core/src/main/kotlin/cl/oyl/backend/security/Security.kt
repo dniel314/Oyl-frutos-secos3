@@ -51,10 +51,9 @@ class SecurityConfig(private val props: JwtProperties) {
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
-            .headers { h -> h.frameOptions { it.sameOrigin() } } // consola H2
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+                        .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers("/api/v1/auth/**", "/h2-console/**", "/actuator/health").permitAll()
+                it.requestMatchers("/api/v1/auth/**", "/actuator/health", "/actuator/health/**").permitAll()
                 it.requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/stores/**", "/uploads/**").permitAll()
                 it.requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("ADMINISTRADOR")
                 it.requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasRole("ADMINISTRADOR")

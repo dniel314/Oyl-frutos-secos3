@@ -1,10 +1,16 @@
-# Integración técnica Repo 1 + Repo 2
+# Integración técnica — estado final
+
+> Documento actualizado. La versión anterior describía `ms-core` sobre H2 y bases
+> lógicas compartidas; eso **ya no es así**. Este archivo refleja el estado real
+> del código de esta entrega.
 
 ## Decisión de compatibilidad
 
-El backend original del Repo 1 contiene más capacidades que los servicios del Repo 2. Para preservar comportamiento, se conserva en `backend/ms-core`. La infraestructura del Repo 2 opera como capa distribuida adicional.
+El backend original contiene más capacidades que los tres servicios Java (pedidos,
+inventario, tiendas, avisos, QR, concurrencia de stock). Para no perder ninguna regla
+de negocio, se conserva íntegro como `backend/ms-core`, ahora sobre PostgreSQL.
 
-## Rutas del Gateway
+## Rutas del Gateway (`api-gateway`, puerto 8080)
 
 | Ruta | Destino |
 |---|---|
@@ -13,13 +19,38 @@ El backend original del Repo 1 contiene más capacidades que los servicios del R
 | `/api/ventas/**`, `/api/pedidos/**` | `ms-ventas:8083` |
 | `/api/v1/**`, `/uploads/**` | `ms-core:8084` |
 
-## Persistencia
+La app Android consume los cuatro servicios **a través del gateway**; las URLs directas
+(8081–8084) se usan solo en la pantalla de diagnóstico del Perfil.
 
-- Los tres microservicios de referencia usan PostgreSQL y bases lógicas separadas.
-- `ms-core` conserva H2 en memoria, como en el Repo 1.
-- No se inventó sincronización de datos entre los distintos almacenes.
-- Android sigue usando Room local.
+## Persistencia (cambio principal)
+
+| Servicio | Base | Contenedor | Volumen |
+|---|---|---|---|
+| `ms-usuarios` | `oyl_usuarios` | `postgres-usuarios` | `pg_usuarios_data` |
+| `ms-productos` | `oyl_productos` | `postgres-productos` | `pg_productos_data` |
+| `ms-ventas` | `oyl_ventas` | `postgres-ventas` | `pg_ventas_data` |
+| `ms-core` | `oyl_core` | `postgres-core` | `pg_core_data` |
+
+- **Cuatro instancias PostgreSQL independientes**, cada una con su usuario, contraseña y
+  volumen. No hay bases compartidas ni `init-databases.sql` central.
+- Esquema administrado por **Flyway** en los cuatro servicios
+  (`db/migration/V1__init_*.sql`), con Hibernate en `ddl-auto: validate`.
+- `ms-core` ya **no usa H2**: se eliminaron la dependencia, la consola `/h2-console` y el
+  perfil de pruebas con H2. Los datos persisten entre reinicios.
+- No se inventó sincronización entre las cuatro bases: cada servicio es dueño de sus datos.
+
+## Pruebas
+
+- Backend Maven: PostgreSQL real embebido por prueba (Zonky) en lugar de H2.
+- `ms-core`: PostgreSQL embebido compartido con una base nueva por contexto de Spring.
+- Android: pruebas JVM de la capa Retrofit contra `MockWebServer`.
+
+Comandos y resultados en el [README](../README.md#ejecutar-las-pruebas).
 
 ## Seguridad
 
-Cambiar los secretos de JWT, la contraseña del administrador demo y las credenciales de PostgreSQL antes de desplegar. H2 en memoria reinicia sus datos cuando se reinicia `ms-core`. Revisar CORS y configurar orígenes explícitos antes de producción.
+- Cambiar `OYL_JWT_SECRET` (32+ caracteres), `OYL_ADMIN_PASSWORD` y **todas** las
+  contraseñas `DB_*` antes de desplegar. Partir de `.env.example` y no versionar `.env`.
+- La app admite HTTP en claro **solo en builds debug**; release exige HTTPS.
+- Los contenedores corren con usuario sin privilegios.
+- Revisar CORS del gateway y restringir orígenes antes de producción.

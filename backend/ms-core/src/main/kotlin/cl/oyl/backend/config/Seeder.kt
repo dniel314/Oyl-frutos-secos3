@@ -10,6 +10,7 @@ import cl.oyl.backend.repo.CategoryRepository
 import cl.oyl.backend.repo.ProductRepository
 import cl.oyl.backend.repo.StoreRepository
 import cl.oyl.backend.repo.UserRepository
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -17,7 +18,11 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
-/** Datos ficticios de demostración (los mismos que siembra la app en Room). */
+/**
+ * Datos ficticios de demostración (los mismos que siembra la app en Room).
+ * Con OYL_DEMO_SEED=false se omite por completo para arrancar una base vacía.
+ * Ahora que la base es PostgreSQL persistente, el sembrado ocurre una sola vez.
+ */
 @Component
 class Seeder(
     private val users: UserRepository,
@@ -26,10 +31,20 @@ class Seeder(
     private val stores: StoreRepository,
     private val encoder: PasswordEncoder,
     @Value("\${oyl.demo-admin-password}") private val adminPassword: String,
+    @Value("\${oyl.demo-seed:true}") private val demoSeed: Boolean,
 ) : ApplicationRunner {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @Transactional
     override fun run(args: ApplicationArguments) {
-        if (users.count() > 0) return
+        if (!demoSeed) {
+            log.info("OYL_DEMO_SEED=false: no se siembran datos de demostración")
+            return
+        }
+        if (users.count() > 0) {
+            log.info("Datos de demostración ya presentes: se omite el sembrado")
+            return
+        }
         users.save(UserAccount("Administrador", "admin", "admin@admin.cl", "+56 9 1234 1234", "Santiago", null,
             encoder.encode(adminPassword)!!, Role.ADMINISTRADOR))
         val (frutos, semillas, deshidratados) = listOf("Frutos secos", "Semillas", "Deshidratados").map { categories.save(Category(it)) }
@@ -51,5 +66,6 @@ class Seeder(
             Product("Arándanos deshidratados", deshidratados, "Arándanos deshidratados levemente endulzados.", 3290, "Bolsa 200 g", 200, "Chile", null, 15, 5),
             Product("Damascos deshidratados", deshidratados, "Huesillos/damascos secos naturales.", 2790, "Bolsa 250 g", 250, "Chile", null, 9, 5),
         ).forEach { p -> products.saveAndFlush(p); p.qrCode = "OYL-P-%04d".format(p.id) }
+        log.info("Sembrado demo ms-core completado: 1 admin, 3 categorías, 3 tiendas y 11 productos")
     }
 }
